@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Post Manager</title>
+
+<style>
+:root{
+  --bg:#f3f4f6;
+  --card:#ffffff;
+  --primary:#2563eb;
+  --danger:#ef4444;
+  --text:#111827;
+  --muted:#6b7280;
+  --radius:14px;
+  --own:#2563eb;
+  --copy:#16a34a;
+  --high:#dc2626;
+  --low:#0284c7;
+}
+
+*{ box-sizing:border-box; }
+
+body{
+  margin:0;
+  background:var(--bg);
+  font-family:system-ui,sans-serif;
+  color:var(--text);
+}
+
+.container{
+  max-width:420px;
+  margin:auto;
+  padding:14px;
+}
+
+.card{
+  background:var(--card);
+  border-radius:var(--radius);
+  padding:12px;
+  margin-bottom:10px;
+  box-shadow:0 4px 12px rgba(0,0,0,.05);
+}
+
+.hidden{ display:none; }
+
+.filter-row{
+  display:flex;
+  gap:8px;
+}
+
+select, textarea, button{
+  width:100%;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid #e5e7eb;
+  font-size:14px;
+}
+
+textarea{ resize:none; min-height:80px; }
+
+.tabs{
+  display:flex;
+  gap:8px;
+  margin-bottom:8px;
+}
+
+.tab{
+  flex:1;
+  padding:8px;
+  text-align:center;
+  border-radius:10px;
+  font-size:13px;
+  cursor:pointer;
+  background:#f3f4f6;
+  font-weight:600;
+}
+
+.tab.active-own{ background:#e0e7ff; color:#1e40af; }
+.tab.active-copy{ background:#dcfce7; color:#166534; }
+.tab.active-high{ background:#fee2e2; color:#991b1b; }
+.tab.active-low{ background:#e0f2fe; color:#075985; }
+
+.post-text{
+  font-size:14px;
+  line-height:1.45;
+  white-space:pre-wrap;
+}
+
+.expand{
+  font-size:12px;
+  color:var(--primary);
+  cursor:pointer;
+}
+
+.meta{
+  display:flex;
+  gap:6px;
+  margin-top:6px;
+  font-size:11px;
+  flex-wrap:wrap;
+}
+
+.badge{
+  padding:2px 6px;
+  border-radius:6px;
+  font-weight:600;
+}
+
+.type-own{ background:#e0e7ff; color:#1e40af; }
+.type-copy{ background:#dcfce7; color:#166534; }
+.tag-high{ background:#fee2e2; color:#991b1b; }
+.tag-low{ background:#e0f2fe; color:#075985; }
+
+.date{ color:var(--muted); }
+
+.actions{
+  display:flex;
+  gap:8px;
+  margin-top:8px;
+}
+
+.actions button{
+  flex:1;
+  font-size:12px;
+  padding:6px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  background:#f3f4f6;
+}
+
+.actions .primary{ background:#e0e7ff; color:#1e40af; }
+.actions .danger{ background:#fee2e2; color:#991b1b; }
+
+.fab{
+  position:fixed;
+  right:16px;
+  bottom:16px;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  background:var(--primary);
+  color:#fff;
+  font-size:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<!-- HOME -->
+<div class="container" id="homePage">
+  <div class="card filter-row">
+    <select id="typeFilter" onchange="renderPosts()">
+      <option value="all">All</option>
+      <option value="own">Own</option>
+      <option value="copy">Copy</option>
+      <option value="high">High</option>
+      <option value="low">Low</option>
+    </select>
+
+    <select id="monthFilter" onchange="renderPosts()"></select>
+
+    <select id="sortFilter" onchange="renderPosts()">
+      <option value="latest">Latest first</option>
+      <option value="oldest">Oldest first</option>
+      <option value="most">Most copied</option>
+      <option value="least">Least copied</option>
+    </select>
+  </div>
+
+  <div id="postList"></div>
+</div>
+
+<!-- ADD -->
+<div class="container hidden" id="addPage">
+  <div class="card">
+
+    <!-- TEXTAREA FIRST -->
+    <textarea id="postText" placeholder="Write something…"></textarea>
+
+    <!-- TYPE TABS -->
+    <div class="tabs" style="margin-top:6px">
+      <div class="tab" id="ownTab" onclick="setType('own')">Own</div>
+      <div class="tab active-copy" id="copyTab" onclick="setType('copy')">Copy</div>
+    </div>
+
+    <!-- TAG TABS -->
+    <div class="tabs">
+      <div class="tab" id="highTab" onclick="setTag('high')">High</div>
+      <div class="tab active-low" id="lowTab" onclick="setTag('low')">Low</div>
+    </div>
+
+    <button style="margin-top:8px;background:var(--primary);color:#fff;border:none"
+      onclick="savePost()">Save</button>
+
+    <button style="margin-top:6px;border:none;background:#f3f4f6"
+      onclick="goHome()">Cancel</button>
+  </div>
+</div>
+
+<div class="fab" onclick="openAdd()">+</div>
+
+<script>
+const API_URL="https://script.google.com/macros/s/AKfycbyQACpAH_zJH_npUXaYEoti-_yh9FAI3InVaf79SlXDAQTfAgG9rucx1yUA0PYrOzmU/exec";
+const PREVIEW_LEN=45;
+
+let posts=[];
+let pid=Date.now();
+let newType="copy";
+let newTag="low";
+
+function formatDate(ts){
+  return new Date(ts).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+}
+
+function setType(t){
+  newType=t;
+  ownTab.className="tab"+(t==="own"?" active-own":"");
+  copyTab.className="tab"+(t==="copy"?" active-copy":"");
+}
+
+function setTag(t){
+  newTag=t;
+  highTab.className="tab"+(t==="high"?" active-high":"");
+  lowTab.className="tab"+(t==="low"?" active-low":"");
+}
+
+function openAdd(){
+  setType("copy");
+  setTag("low");
+  toggle("addPage");
+}
+
+function goHome(){ toggle("homePage"); }
+
+function toggle(id){
+  document.querySelectorAll(".container").forEach(d=>d.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+}
+
+function loadPosts(){
+  fetch(API_URL).then(r=>r.json()).then(d=>{
+    posts=d.map(p=>({
+      ...p,
+      copy:+p.copy||0,
+      time:p.time||Date.now(),
+      tag:p.tag||"low"
+    }));
+    loadMonths();
+    renderPosts();
+  });
+}
+window.onload=loadPosts;
+
+function saveToSheet(){
+  fetch(API_URL,{
+    method:"POST",
+    body:JSON.stringify(posts)
+  });
+}
+
+function savePost(){
+  if(!postText.value.trim()) return;
+  const d=new Date();
+  posts.unshift({
+    id:pid++,
+    text:postText.value,
+    type:newType,
+    tag:newTag,
+    copy:0,
+    time:d.getTime(),
+    month:d.toLocaleString("default",{month:"long",year:"numeric"}),
+    expanded:false
+  });
+  postText.value="";
+  saveToSheet();
+  goHome();
+  loadMonths();
+  renderPosts();
+}
+
+function renderPosts(){
+  postList.innerHTML="";
+  let list=[...posts].filter(p=>{
+    const f=typeFilter.value;
+    if(f==="all") return true;
+    if(f==="own"||f==="copy") return p.type===f;
+    if(f==="high"||f==="low") return p.tag===f;
+  });
+
+  if(monthFilter.value!=="all")
+    list=list.filter(p=>p.month===monthFilter.value);
+
+  if(sortFilter.value==="latest") list.sort((a,b)=>b.time-a.time);
+  if(sortFilter.value==="oldest") list.sort((a,b)=>a.time-b.time);
+  if(sortFilter.value==="most") list.sort((a,b)=>b.copy-a.copy);
+  if(sortFilter.value==="least") list.sort((a,b)=>a.copy-b.copy);
+
+  list.forEach(p=>{
+    const previewLength = PREVIEW_LEN;
+    const isExpanded = p.expanded || p.text.length <= previewLength;
+    const fullText = isExpanded ? p.text : p.text.slice(0, previewLength) + "…";
+
+    let boldText = fullText.length > 50 ? "<b>"+fullText.slice(0,50)+"</b>"+fullText.slice(50) : "<b>"+fullText+"</b>";
+
+    postList.innerHTML+=`
+    <div class="card">
+      <div class="post-text">${boldText}</div>
+      ${p.text.length>previewLength?`<span class="expand" onclick="pExpand(${p.id})">${p.expanded?"See less":"See all"}</span>`:""}
+      <div class="meta">
+        <span class="badge ${p.type==='own'?'type-own':'type-copy'}">${p.type.toUpperCase()}</span>
+        <span class="badge ${p.tag==='high'?'tag-high':'tag-low'}">${p.tag.toUpperCase()}</span>
+        <span class="date">${formatDate(p.time)}</span>
+      </div>
+      <div class="actions">
+        <button class="primary" onclick="editPost(${p.id})">Edit</button>
+        <button onclick="copyPost(${p.id})">Copy ${p.copy}</button>
+        <button class="danger" onclick="deletePost(${p.id})">Delete</button>
+      </div>
+    </div>`;
+  });
+}
+
+function pExpand(id){
+  const p=posts.find(x=>x.id===id);
+  p.expanded=!p.expanded;
+  renderPosts();
+}
+
+function editPost(id){
+  const p=posts.find(x=>x.id===id);
+  const t=prompt("Edit post",p.text);
+  if(t!=null){ p.text=t; saveToSheet(); renderPosts(); }
+}
+
+function copyPost(id){
+  const p=posts.find(x=>x.id===id);
+  navigator.clipboard.writeText(p.text);
+  p.copy++;
+  saveToSheet();
+  renderPosts();
+}
+
+function deletePost(id){
+  if(confirm("Delete post?")){
+    posts=posts.filter(p=>p.id!==id);
+    saveToSheet();
+    renderPosts();
+  }
+}
+
+function loadMonths(){
+  monthFilter.innerHTML='<option value="all">All Months</option>';
+  [...new Set(posts.map(p=>p.month))].forEach(m=>{
+    const o=document.createElement("option");
+    o.value=m;
+    o.textContent=m;
+    monthFilter.appendChild(o);
+  });
+}
+</script>
+
+</body>
+</html>
