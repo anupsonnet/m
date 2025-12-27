@@ -285,7 +285,7 @@ function savePost(){
 
   // SIMILARITY CHECK (80% threshold)
   const isSimilar = posts.some(p =>
-    textSimilarity(p.text.trim(), newText) >= 0.8
+    textSimilarity(p.text.trim(), newText) >= 0.7
   );
 
   if(isSimilar){
@@ -396,4 +396,5 @@ function loadMonths(){
 
 </body>
 </html>
+
 
