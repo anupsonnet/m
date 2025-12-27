@@ -266,12 +266,37 @@ function saveToSheet(){
   });
 }
 
+function textSimilarity(a, b){
+  a = a.toLowerCase();
+  b = b.toLowerCase();
+
+  const wordsA = new Set(a.split(/\s+/));
+  const wordsB = new Set(b.split(/\s+/));
+
+  const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
+
+  return union === 0 ? 0 : intersection / union;
+}
+
 function savePost(){
-  if(!postText.value.trim()) return;
+  const newText = postText.value.trim();
+  if(!newText) return;
+
+  // SIMILARITY CHECK (80% threshold)
+  const isSimilar = posts.some(p =>
+    textSimilarity(p.text.trim(), newText) >= 0.8
+  );
+
+  if(isSimilar){
+    alert("Similar post already exists. Please avoid duplicate content.");
+    return;
+  }
+
   const d=new Date();
   posts.unshift({
     id:pid++,
-    text:postText.value,
+    text:newText,
     type:newType,
     tag:newTag,
     copy:0,
@@ -279,12 +304,14 @@ function savePost(){
     month:d.toLocaleString("default",{month:"long",year:"numeric"}),
     expanded:false
   });
+
   postText.value="";
   saveToSheet();
   goHome();
   loadMonths();
   renderPosts();
 }
+
 
 function renderPosts(){
   postList.innerHTML="";
@@ -369,3 +396,4 @@ function loadMonths(){
 
 </body>
 </html>
+
