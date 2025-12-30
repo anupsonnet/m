@@ -208,15 +208,13 @@ textarea{ resize:none; min-height:80px; }
 <div class="fab" onclick="openAdd()">+</div>
 
 <script>
-const API_URL="https://script.google.com/macros/s/AKfycbxD5D6AvU2vZIxjRb4DIkIU9cC1HLutjkRdLE6-j9fN-d-jUo2gBrz3W2X9H8MICY4-/exec";
+const API_URL="https://script.google.com/macros/s/AKfycbyQACpAH_zJH_npUXaYEoti-_yh9FAI3InVaf79SlXDAQTfAgG9rucx1yUA0PYrOzmU/exec";
 const PREVIEW_LEN=45;
 
 let posts=[];
 let pid=Date.now();
 let newType="copy";
 let newTag="low";
-
-/* ---------- helpers ---------- */
 
 function formatDate(ts){
   return new Date(ts).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
@@ -240,101 +238,83 @@ function openAdd(){
   toggle("addPage");
 }
 
-function goHome(){
-  toggle("homePage");
-}
+function goHome(){ toggle("homePage"); }
 
 function toggle(id){
   document.querySelectorAll(".container").forEach(d=>d.classList.add("hidden"));
   document.getElementById(id).classList.remove("hidden");
 }
 
-/* ---------- load from sheet ---------- */
-
 function loadPosts(){
-  fetch(API_URL)
-    .then(r=>r.json())
-    .then(d=>{
-      posts = d.map(p=>({
-        ...p,
-        copy:+p.copy||0,
-        time:+p.time||Date.now(),
-        tag:p.tag||"low",
-        expanded:false
-      }));
-      loadMonths();
-      renderPosts();
-    })
-    .catch(()=>{ posts=[]; });
+  fetch(API_URL).then(r=>r.json()).then(d=>{
+    posts=d.map(p=>({
+      ...p,
+      copy:+p.copy||0,
+      time:p.time||Date.now(),
+      tag:p.tag||"low"
+    }));
+    loadMonths();
+    renderPosts();
+  });
 }
 window.onload=loadPosts;
 
-/* ---------- save single post (OPTION A - NO CORS) ---------- */
-
-function saveToSheet(post){
+function saveToSheet(){
   fetch(API_URL,{
     method:"POST",
-    body: JSON.stringify(post)
-  })
-  .then(r=>r.text())
-  .then(t=>console.log("Sheet response:", t))
-  .catch(e=>console.error("Sheet error:", e));
+    body:JSON.stringify(posts)
+  });
 }
 
+function textSimilarity(a, b){
+  a = a.toLowerCase();
+  b = b.toLowerCase();
 
+  const wordsA = new Set(a.split(/\s+/));
+  const wordsB = new Set(b.split(/\s+/));
 
-/* ---------- similarity ---------- */
+  const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
 
-function textSimilarity(a,b){
-  a=a.toLowerCase();
-  b=b.toLowerCase();
-  const A=new Set(a.split(/\s+/));
-  const B=new Set(b.split(/\s+/));
-  const inter=[...A].filter(w=>B.has(w)).length;
-  const union=new Set([...A,...B]).size;
-  return union===0?0:inter/union;
+  return union === 0 ? 0 : intersection / union;
 }
-
-/* ---------- create post ---------- */
 
 function savePost(){
   const newText = postText.value.trim();
   if(!newText) return;
 
+  // SIMILARITY CHECK (80% threshold)
   const isSimilar = posts.some(p =>
     textSimilarity(p.text.trim(), newText) >= 0.7
   );
+
   if(isSimilar){
-    alert("Similar post already exists.");
+    alert("Similar post already exists. Please avoid duplicate content.");
     return;
   }
 
-  const d = new Date();
-  const postObj = {
-  id: pid++,
-  text: newText,
-  type: newType,
-  tag: newTag,
-  copy: 0,
-  time: Date.now(),   // not stored, UI only
-  month: d.toLocaleString("default",{month:"long",year:"numeric"})
-};
-
-
-  posts.unshift({ ...postObj, expanded:false });
-  saveToSheet(postObj);
+  const d=new Date();
+  posts.unshift({
+    id:pid++,
+    text:newText,
+    type:newType,
+    tag:newTag,
+    copy:0,
+    time:d.getTime(),
+    month:d.toLocaleString("default",{month:"long",year:"numeric"}),
+    expanded:false
+  });
 
   postText.value="";
+  saveToSheet();
   goHome();
   loadMonths();
   renderPosts();
 }
 
-/* ---------- render ---------- */
 
 function renderPosts(){
   postList.innerHTML="";
-
   let list=[...posts].filter(p=>{
     const f=typeFilter.value;
     if(f==="all") return true;
@@ -351,67 +331,57 @@ function renderPosts(){
   if(sortFilter.value==="least") list.sort((a,b)=>a.copy-b.copy);
 
   list.forEach(p=>{
-    const isExpanded = p.expanded || p.text.length<=PREVIEW_LEN;
-    const text = isExpanded ? p.text : p.text.slice(0,PREVIEW_LEN)+"…";
-    const boldText = text.length>50
-      ? "<b>"+text.slice(0,50)+"</b>"+text.slice(50)
-      : "<b>"+text+"</b>";
+    const previewLength = PREVIEW_LEN;
+    const isExpanded = p.expanded || p.text.length <= previewLength;
+    const fullText = isExpanded ? p.text : p.text.slice(0, previewLength) + "…";
+
+    let boldText = fullText.length > 50 ? "<b>"+fullText.slice(0,50)+"</b>"+fullText.slice(50) : "<b>"+fullText+"</b>";
 
     postList.innerHTML+=`
-      <div class="card">
-        <div class="post-text">${boldText}</div>
-        ${p.text.length>PREVIEW_LEN
-          ? `<span class="expand" onclick="pExpand(${p.id})">${p.expanded?"See less":"See all"}</span>`
-          : ""}
-        <div class="meta">
-          <span class="badge ${p.type==="own"?"type-own":"type-copy"}">${p.type.toUpperCase()}</span>
-          <span class="badge ${p.tag==="high"?"tag-high":"tag-low"}">${p.tag.toUpperCase()}</span>
-          <span class="date">${formatDate(p.time)}</span>
-        </div>
-        <div class="actions">
-          <button class="primary" onclick="editPost(${p.id})">Edit</button>
-          <button onclick="copyPost(${p.id})">Copy ${p.copy}</button>
-          <button class="danger" onclick="deletePost(${p.id})">Delete</button>
-        </div>
-      </div>`;
+    <div class="card">
+      <div class="post-text">${boldText}</div>
+      ${p.text.length>previewLength?`<span class="expand" onclick="pExpand(${p.id})">${p.expanded?"See less":"See all"}</span>`:""}
+      <div class="meta">
+        <span class="badge ${p.type==='own'?'type-own':'type-copy'}">${p.type.toUpperCase()}</span>
+        <span class="badge ${p.tag==='high'?'tag-high':'tag-low'}">${p.tag.toUpperCase()}</span>
+        <span class="date">${formatDate(p.time)}</span>
+      </div>
+      <div class="actions">
+        <button class="primary" onclick="editPost(${p.id})">Edit</button>
+        <button onclick="copyPost(${p.id})">Copy ${p.copy}</button>
+        <button class="danger" onclick="deletePost(${p.id})">Delete</button>
+      </div>
+    </div>`;
   });
 }
 
-/* ---------- actions ---------- */
-
 function pExpand(id){
   const p=posts.find(x=>x.id===id);
-  if(!p) return;
   p.expanded=!p.expanded;
   renderPosts();
 }
 
 function editPost(id){
   const p=posts.find(x=>x.id===id);
-  if(!p) return;
   const t=prompt("Edit post",p.text);
-  if(t!==null){
-    p.text=t;
-    renderPosts();
-  }
+  if(t!=null){ p.text=t; saveToSheet(); renderPosts(); }
 }
 
 function copyPost(id){
   const p=posts.find(x=>x.id===id);
-  if(!p) return;
   navigator.clipboard.writeText(p.text);
   p.copy++;
+  saveToSheet();
   renderPosts();
 }
 
 function deletePost(id){
   if(confirm("Delete post?")){
-    posts = posts.filter(p=>p.id!==id);
+    posts=posts.filter(p=>p.id!==id);
+    saveToSheet();
     renderPosts();
   }
 }
-
-/* ---------- months ---------- */
 
 function loadMonths(){
   monthFilter.innerHTML='<option value="all">All Months</option>';
@@ -424,8 +394,8 @@ function loadMonths(){
 }
 </script>
 
-
-
 </body>
 </html>
+
+
 
