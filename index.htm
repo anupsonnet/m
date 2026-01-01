@@ -207,8 +207,9 @@ textarea{ resize:none; min-height:80px; }
 
 <div class="fab" onclick="openAdd()">+</div>
 
+
 <script>
-const API_URL="https://script.google.com/macros/s/AKfycbyQACpAH_zJH_npUXaYEoti-_yh9FAI3InVaf79SlXDAQTfAgG9rucx1yUA0PYrOzmU/exec";
+const API_URL="https://script.google.com/macros/s/AKfycbxZL5fDanRC_6W9VaNYv1UE4XZB5ARhfQJaMXphVmzsEiluXHegeWchiBGIseEWWtoz/exec";
 const PREVIEW_LEN=45;
 
 let posts=[];
@@ -250,8 +251,9 @@ function loadPosts(){
     posts=d.map(p=>({
       ...p,
       copy:+p.copy||0,
-      time:p.time||Date.now(),
-      tag:p.tag||"low"
+      time:+p.time||Date.now(),
+      tag:p.tag||"low",
+      expanded:false
     }));
     loadMonths();
     renderPosts();
@@ -259,28 +261,56 @@ function loadPosts(){
 }
 window.onload=loadPosts;
 
-function saveToSheet(){
+// ✅ send only one post object
+function saveToSheet(post){
   fetch(API_URL,{
     method:"POST",
-    body:JSON.stringify(posts)
+    body:JSON.stringify(post)
   });
 }
 
+function textSimilarity(a, b){
+  a = a.toLowerCase();
+  b = b.toLowerCase();
+
+  const wordsA = new Set(a.split(/\s+/));
+  const wordsB = new Set(b.split(/\s+/));
+
+  const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
+
+  return union === 0 ? 0 : intersection / union;
+}
+
 function savePost(){
-  if(!postText.value.trim()) return;
+  const newText = postText.value.trim();
+  if(!newText) return;
+
+  const isSimilar = posts.some(p =>
+    textSimilarity(p.text.trim(), newText) >= 0.7
+  );
+
+  if(isSimilar){
+    alert("Similar post already exists. Please avoid duplicate content.");
+    return;
+  }
+
   const d=new Date();
-  posts.unshift({
+  const newPost={
     id:pid++,
-    text:postText.value,
+    text:newText,
     type:newType,
     tag:newTag,
     copy:0,
     time:d.getTime(),
     month:d.toLocaleString("default",{month:"long",year:"numeric"}),
     expanded:false
-  });
+  };
+
+  posts.unshift(newPost);
+
   postText.value="";
-  saveToSheet();
+  saveToSheet(newPost);   // ✅ send only new post
   goHome();
   loadMonths();
   renderPosts();
@@ -337,21 +367,26 @@ function pExpand(id){
 function editPost(id){
   const p=posts.find(x=>x.id===id);
   const t=prompt("Edit post",p.text);
-  if(t!=null){ p.text=t; saveToSheet(); renderPosts(); }
+  if(t!=null){
+    p.text=t;
+    saveToSheet(p);   // ✅ update post
+    renderPosts();
+  }
 }
 
 function copyPost(id){
   const p=posts.find(x=>x.id===id);
   navigator.clipboard.writeText(p.text);
   p.copy++;
-  saveToSheet();
+  saveToSheet(p);   // ✅ update post
   renderPosts();
 }
 
 function deletePost(id){
   if(confirm("Delete post?")){
-    posts=posts.filter(p=>p.id!==id);
-    saveToSheet();
+    const p=posts.find(x=>x.id===id);
+    posts=posts.filter(x=>x.id!==id);
+    saveToSheet({id:p.id, delete:true});  // ✅ mark deletion
     renderPosts();
   }
 }
@@ -367,5 +402,10 @@ function loadMonths(){
 }
 </script>
 
+
+
+
+
 </body>
 </html>
+
