@@ -157,6 +157,15 @@ textarea{ resize:none; min-height:180px; }
 <!-- HOME -->
 <div class="container" id="homePage">
   <div class="card filter-row">
+  
+  <input 
+  type="text" 
+  id="searchInput" 
+  placeholder="Search posts..." 
+  oninput="renderPosts()"
+/>
+
+  
     <select id="typeFilter" onchange="renderPosts()">
       <option value="all">All</option>
       <option value="own">Own</option>
@@ -175,7 +184,14 @@ textarea{ resize:none; min-height:180px; }
     </select>
   </div>
 
-  <div id="postList"></div>
+ <div class="card" style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+  <button onclick="prevPage()">Prev</button>
+  <span id="pageInfo" style="width:200px; text-align:center;">Page 1</span>
+  <button onclick="nextPage()">Next</button>
+</div>
+
+<div id="postList"></div>
+
 </div>
 
 <!-- ADD -->
@@ -211,6 +227,10 @@ textarea{ resize:none; min-height:180px; }
 <script>
 const API_URL="https://script.google.com/macros/s/AKfycbxZL5fDanRC_6W9VaNYv1UE4XZB5ARhfQJaMXphVmzsEiluXHegeWchiBGIseEWWtoz/exec";
 const PREVIEW_LEN=45;
+
+let currentPage = 1;
+const RECORDS_PER_PAGE = 50;
+
 
 let posts=[];
 let pid=Date.now();
@@ -316,13 +336,24 @@ function savePost(){
   renderPosts();
 }
 
+
 function renderPosts(){
+currentPage = currentPage || 1;
   postList.innerHTML="";
+
+  const searchValue = document.getElementById("searchInput")?.value.toLowerCase() || "";
+
   let list=[...posts].filter(p=>{
+
+    if(searchValue && !p.text.toLowerCase().includes(searchValue)){
+      return false;
+    }
+
     const f=typeFilter.value;
     if(f==="all") return true;
     if(f==="own"||f==="copy") return p.type===f;
     if(f==="high"||f==="low") return p.tag===f;
+
   });
 
   if(monthFilter.value!=="all")
@@ -333,12 +364,29 @@ function renderPosts(){
   if(sortFilter.value==="most") list.sort((a,b)=>b.copy-a.copy);
   if(sortFilter.value==="least") list.sort((a,b)=>a.copy-b.copy);
 
-  list.forEach(p=>{
+
+  // ===== PAGINATION =====
+  const totalPages = Math.ceil(list.length / RECORDS_PER_PAGE) || 1;
+
+  if(currentPage > totalPages) currentPage = totalPages;
+
+  const start = (currentPage - 1) * RECORDS_PER_PAGE;
+  const end = start + RECORDS_PER_PAGE;
+  const paginatedList = list.slice(start, end);
+
+  document.getElementById("pageInfo").innerText =
+    "Page " + currentPage + " of " + totalPages;
+
+
+  paginatedList.forEach(p=>{
+
     const previewLength = PREVIEW_LEN;
     const isExpanded = p.expanded || p.text.length <= previewLength;
     const fullText = isExpanded ? p.text : p.text.slice(0, previewLength) + "…";
 
-    let boldText = fullText.length > 50 ? "<b>"+fullText.slice(0,50)+"</b>"+fullText.slice(50) : "<b>"+fullText+"</b>";
+    let boldText = fullText.length > 50 
+      ? "<b>"+fullText.slice(0,50)+"</b>"+fullText.slice(50) 
+      : "<b>"+fullText+"</b>";
 
     postList.innerHTML+=`
     <div class="card">
@@ -356,7 +404,10 @@ function renderPosts(){
       </div>
     </div>`;
   });
+
 }
+
+
 
 function pExpand(id){
   const p=posts.find(x=>x.id===id);
@@ -400,6 +451,49 @@ function loadMonths(){
     monthFilter.appendChild(o);
   });
 }
+
+
+
+function nextPage(){
+  const filtered = getFilteredPosts();
+  const totalPages = Math.ceil(filtered.length / RECORDS_PER_PAGE);
+  if(currentPage < totalPages){
+    currentPage++;
+    renderPosts();
+  }
+}
+
+function prevPage(){
+  if(currentPage > 1){
+    currentPage--;
+    renderPosts();
+  }
+}
+
+// helper to reuse filtering logic
+function getFilteredPosts(){
+  const searchValue = document.getElementById("searchInput")?.value.toLowerCase() || "";
+
+  let list=[...posts].filter(p=>{
+    if(searchValue && !p.text.toLowerCase().includes(searchValue)) return false;
+
+    const f=typeFilter.value;
+    if(f==="all") return true;
+    if(f==="own"||f==="copy") return p.type===f;
+    if(f==="high"||f==="low") return p.tag===f;
+  });
+
+  if(monthFilter.value!=="all")
+    list=list.filter(p=>p.month===monthFilter.value);
+
+  if(sortFilter.value==="latest") list.sort((a,b)=>b.time-a.time);
+  if(sortFilter.value==="oldest") list.sort((a,b)=>a.time-b.time);
+  if(sortFilter.value==="most") list.sort((a,b)=>b.copy-a.copy);
+  if(sortFilter.value==="least") list.sort((a,b)=>a.copy-b.copy);
+
+  return list;
+}
+
 </script>
 
 
@@ -408,5 +502,4 @@ function loadMonths(){
 
 </body>
 </html>
-
 
